@@ -21,8 +21,6 @@ import com.example.tabledatabaselib.R;
 public class DTableView extends ViewGroup {
 
 	//@formatter:off
-	private View					mHeadView; // firstView not move
-	
 	private List<View> 				mFirstRowViews;
 	private List<List<View>> 		mTableViews;
 	
@@ -44,7 +42,6 @@ public class DTableView extends ViewGroup {
 	private int 					mHeight; 
 	private int 					mWidth;
 	private int 					mScrollX;
-	private int 					mScrollY;
 	private int 					mFirstColumn;
 	private int						mFirstRow;
 	private int 					mColumnCount;
@@ -78,7 +75,6 @@ public class DTableView extends ViewGroup {
 
 	private void initTouchParams() {
 		mScrollX = 0;
-		mScrollY = 0;
 	}
 
 	/**
@@ -103,7 +99,7 @@ public class DTableView extends ViewGroup {
 				bottom = Math.min(mHeight, sumDims(mHeights));
 
 				// add first row
-				left = 0;
+				left = 0 - mScrollX;
 				for (int i = 0; left < mWidth && i < mColumnCount; i++) {
 					right = left + mWidths[i];
 					View tView = makeAndSetupView(0, i, left, 0, right,
@@ -114,7 +110,7 @@ public class DTableView extends ViewGroup {
 
 				// add another views
 				top = mHeights[0];
-				left = mWidths[0];
+				left = mWidths[0] - mScrollX;
 
 				bottom = mHeights[0];
 
@@ -171,6 +167,14 @@ public class DTableView extends ViewGroup {
 			}
 		}
 		return tSum;
+	}
+
+	private int sumDimsFor(int from, int to, int[] arrays) {
+		int sum = 0;
+		for (int i = from; i < to; i++) {
+			sum += arrays[i];
+		}
+		return sum;
 	}
 
 	@Override
@@ -328,7 +332,6 @@ public class DTableView extends ViewGroup {
 	}
 
 	private void resetTable() {
-		mHeadView = null;
 		mFirstRowViews.clear();
 		mTableViews.clear();
 
@@ -337,29 +340,101 @@ public class DTableView extends ViewGroup {
 
 	@Override
 	public void scrollBy(int x, int y) {
-		if (x == 0) {
+
+		boolean shouldRepositionView = true;
+		if (mNeedRelayout)
+			return;
+		mScrollX += x;
+		recalculateScrollValues();
+		if (mScrollX == 0) {
 			// do nothing
-		} else if (x < 0) { // swipe to right
+		} else if (mScrollX < 0) { // swipe to right
+			if (mFirstColumn != 0) {
+				while (!mFirstRowViews.isEmpty()
+						&& getFilledWidth()
+								- mWidths[mFirstColumn + mFirstRowViews.size()
+										- 1] >= mWidth) {
+					removeColumnRight();
+				}
 
+				while (mScrollX < 0 && mFirstColumn != 0) {
+					addColumnLeft();
+					mFirstColumn--;
+					mScrollX += mWidths[mFirstColumn];
+				}
+			}
 		} else { // swipe to left
-			x = Math.abs(x);
-			if (x > mTouchSlop) {
+			if (mScrollX > mTouchSlop) {
 
-				while (mFirstColumn < mColumnCount && mWidths[mFirstColumn] < x) {
+				while (mFirstColumn < mColumnCount
+						&& mWidths[mFirstColumn] < mScrollX) {
+					mScrollX -= mWidths[mFirstColumn];
 					if (!mFirstRowViews.isEmpty() && getFilledWidth() >= mWidth) {
-						x -= mWidths[mFirstColumn];
 						mFirstColumn++;
 						removeColumnLeft();
 					}
 				}
-
 				while (getFilledWidth() < mWidth
 						&& mFirstColumn + mFirstRowViews.size() < mColumnCount) {
 					addColumnRight();
 				}
+				if (mFirstColumn + mFirstRowViews.size() >= mColumnCount) {
+					mScrollX = 0;
+				}
 			}
 		}
-		repositionViews();
+		if (shouldRepositionView)
+			repositionViews();
+	}
+
+	private void recalculateScrollValues() {
+		mScrollX = desiredScrollValueOf(mScrollX, mWidth, mWidths, 0,
+				mFirstColumn);
+	}
+
+	private int desiredScrollValueOf(int scrollCurrent, int viewSize,
+			int[] dims, int fromLocation, int toLocation) {
+		if (scrollCurrent == 0) {
+		} else if (scrollCurrent < 0) {
+			scrollCurrent = Math.max(scrollCurrent,
+					-sumDimsFor(fromLocation, toLocation, dims));
+		} else {
+			scrollCurrent = Math.min(
+					scrollCurrent,
+					Math.max(0, sumDimsFor(fromLocation, dims.length - 1, dims)
+							- viewSize));
+		}
+		return scrollCurrent;
+	}
+
+	@Override
+	public void scrollTo(int x, int y) {
+		if (mNeedRelayout) {
+			mScrollX = x;
+			mFirstColumn = 0;
+			mFirstRow = 0;
+		} else {
+			scrollBy(x - sumDimsFor(0, mFirstColumn, mWidths) - mScrollX, y
+					- sumDimsFor(0, mFirstRow, mHeights));
+		}
+	}
+
+	private void addColumnLeft() {
+		View tView = createView(0, mFirstColumn, mWidths[mFirstColumn],
+				mHeights[0]);
+		mFirstRowViews.add(0, tView);
+		int i = mFirstRow;
+		for (List<View> list : mTableViews) {
+			tView = createView(i, mFirstColumn, mWidths[mFirstColumn],
+					mHeights[i]);
+			i++;
+			list.add(0, tView);
+		}
+	}
+
+	private void removeColumnRight() {
+		int columntToDelete = mFirstRowViews.size() - 1;
+		removeColumnAt(columntToDelete);
 	}
 
 	private void addColumnRight() {
@@ -385,7 +460,7 @@ public class DTableView extends ViewGroup {
 
 	private void repositionViews() {
 		int top, left, bottom, right;
-		left = 0;
+		left = 0 - mScrollX;
 		int index = mFirstColumn;
 
 		for (View tView : mFirstRowViews) {
@@ -399,11 +474,10 @@ public class DTableView extends ViewGroup {
 		top = mHeights[0];
 		for (List<View> list : mTableViews) {
 
-			left = 0;
+			left = 0 - mScrollX;
 			index = mFirstColumn;
 
 			bottom = top + mHeights[i];
-			Log.e("position " + i, "size: " + list.size());
 			for (View tView : list) {
 				right = left + mWidths[index];
 				index++;
@@ -418,10 +492,10 @@ public class DTableView extends ViewGroup {
 	}
 
 	private void removeColumnLeft() {
-		removeColumnLeft(0);
+		removeColumnAt(0);
 	}
 
-	private void removeColumnLeft(int location) {
+	private void removeColumnAt(int location) {
 		View tView = mFirstRowViews.remove(location);
 		removeView(tView);
 		for (List<View> list : mTableViews) {
@@ -433,10 +507,6 @@ public class DTableView extends ViewGroup {
 	@Override
 	public void removeView(View view) {
 		super.removeView(view);
-		Log.e("view ", view + " on removeview");
-		if (view.getParent() == this) {
-			Log.e("parent", "yes");
-		}
 		mRecyclesView.addRecycleView(view);
 	}
 
