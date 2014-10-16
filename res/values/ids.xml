@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <item name="id_view_row" type="id"></item>
+    <item name="id_view_column" type="id"></item>
+
+</resources>

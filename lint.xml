@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <issue id="ClickableViewAccessibility" severity="ignore" />
+    <issue id="DrawAllocation">
+        <ignore path="src/views/DTable.java" />
+        <ignore path="src/views/DTableView.java" />
+    </issue>
+    <issue id="Recycle">
+        <ignore path="src/views/DTable.java" />
+    </issue>
+</lint>
